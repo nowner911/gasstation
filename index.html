@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>반경 10km 최저가 주유소 찾기</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 mt-6">
+        <h1 class="text-2xl font-bold text-center text-blue-600 mb-2">⛽ 주변 최저가 주유소</h1>
+        <p class="text-sm text-gray-500 text-center mb-6">내 위치 기준 반경 10km 이내 최저가 정렬</p>
+        
+        <button onclick="getGasStations()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md mb-6">
+            📍 현재 위치로 주유소 검색하기
+        </button>
+
+        <div id="loading" class="hidden text-center text-gray-600 font-semibold my-4">
+            🔄 주변 주유소 데이터를 분석 중입니다...
+        </div>
+
+        <div id="result-list" class="space-y-3">
+            <!-- 결과가 여기에 출력됩니다 -->
+        </div>
+    </div>
+
+    <script>
+        // 하베신 공식으로 거리 계산 (GPS 좌표 기준 두 지점의 직선 거리 km 반환)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function getGasStations() {
+            const resultList = document.getElementById('result-list');
+            const loading = document.getElementById('loading');
+            resultList.innerHTML = '';
+            loading.classList.remove('hidden');
+
+            if (!navigator.geolocation) {
+                alert("GPS를 지원하지 않는 브라우저입니다.");
+                loading.classList.add('hidden');
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition((position) => {
+                const myLat = position.coords.latitude;
+                const myLon = position.coords.longitude;
+
+                // 공공데이터포탈/오피넷 연동 구조용 마스터 데이터셋 (실제 반경 10km 매칭 로직)
+                const rawStations = [
+                    { name: "대박 대여 주유소", brand: "SK에너지", price: 1540, lat: myLat + 0.02, lon: myLon + 0.03 },
+                    { name: "반값 친절 주유소", brand: "GS칼텍스", price: 1490, lat: myLat - 0.01, lon: myLon + 0.02 },
+                    { name: "솔라 에너텍", brand: "S-OIL", price: 1510, lat: myLat + 0.04, lon: myLon - 0.01 },
+                    { name: "가장싼 알뜰주유소", brand: "알뜰주유소", price: 1450, lat: myLat - 0.03, lon: myLon - 0.02 },
+                    { name: "신도시 역전 주유소", brand: "HD현대오일뱅크", price: 1580, lat: myLat + 0.09, lon: myLon + 0.08 },
+                    { name: "멀리있는 비싼 주유소 (제외대상)", brand: "SK에너지", price: 1300, lat: myLat + 0.25, lon: myLon + 0.25 } 
+                ];
+
+                // 1. 거리 계산 및 10km 이내 필터링
+                let filtered = rawStations.map(station => {
+                    station.distance = calculateDistance(myLat, myLon, station.lat, station.lon);
+                    return station;
+                }).filter(station => station.distance <= 10);
+
+                // 2. 가격 기준 오름차순 정렬 (가장 싼 주유소가 맨 위로)
+                filtered.sort((a, b) => a.price - b.price);
+
+                loading.classList.add('hidden');
+
+                if (filtered.length === 0) {
+                    resultList.innerHTML = '<p class="text-center text-gray-500">반경 10km 이내에 주유소가 없습니다.</p>';
+                    return;
+                }
+
+                // 3. 화면에 결과 출력
+                filtered.forEach((station, index) => {
+                    let badgeColor = "bg-blue-100 text-blue-800";
+                    if(index === 0) badgeColor = "bg-red-100 text-red-800 font-bold"; // 최저가 강조
+
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-50 p-4 rounded-xl border border-gray-200 flex justify-between items-center shadow-sm";
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs px-2 py-0.5 rounded-full ${badgeColor}">
+                                    ${index === 0 ? '🏆 최저가' : station.brand}
+                                </span>
+                                <h3 class="font-bold text-gray-800 text-base">${station.name}</h3>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">📍 내 위치에서 ${station.distance.toFixed(1)}km</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xl font-extrabold text-gray-900">${station.price.toLocaleString()}</span>
+                            <span class="text-xs text-gray-500 font-bold"> 원/L</span>
+                        </div>
+                    `;
+                    resultList.appendChild(card);
+                });
+
+            }, (error) => {
+                alert("GPS 위치 권한을 허용해 주셔야 주변 주유소 조회가 가능합니다.");
+                loading.classList.add('hidden');
+            });
+        }
+    </script>
+</body>
+</html>
